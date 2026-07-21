@@ -1,7 +1,14 @@
 package main
 
-import "fmt"
+import (
+	"log"
+	"github.com/shashank-njr10/distributed_file_storage/p2p"
+)
 
 func main() {
-	fmt.Println("Hello, Distributed File Storage!")
+	tr := p2p.NewTCPTransport(":3000")
+	if err:= tr.ListenAndAccept(); err != nil {
+		log.Fatal(err)
+	}
+	select {}
 }

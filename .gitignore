@@ -1,0 +1,9 @@
+# Build output
+bin/
+
+# VS Code
+.vscode/
+
+# Go coverage
+*.out
+coverage.out
