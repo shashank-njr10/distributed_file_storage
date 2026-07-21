@@ -104,7 +104,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 		err = t.Decoder.Decode(conn, &rpc)
 		
 		if err == net.ErrClosed {
-			return 
+			// just add return over here 
 		}
 
 		if err != nil {
