@@ -6,8 +6,12 @@ import "log"
 import "crypto/sha1"
 import "encoding/hex"
 import "strings"
+import "bytes"
+// import "crypto/md5"
+import "fmt"
 
-func CASPathTransformFunc(key string) string {
+
+func CASPathTransformFunc(key string) PathKey {
 	hash := sha1.Sum([]byte(key))
 	hashStr := hex.EncodeToString(hash[:])
 	
@@ -20,10 +24,23 @@ func CASPathTransformFunc(key string) string {
 		from, to := i*blocksize, (i*blocksize)+blocksize
 		paths[i] = hashStr[from:to]
 	}
-	return strings.Join(paths, "/")
+
+	return PathKey {
+		PathName: strings.Join(paths, "/"),
+		Filename: hashStr,
+	}
 }
 
-type PathTransformFunc func(string) string
+type PathTransformFunc func(string) PathKey
+
+type PathKey struct {
+	PathName string
+	Filename string
+}
+
+func (p PathKey) FullPath() string {
+	return fmt.Sprintf("%s/%s", p.PathName, p.Filename)
+}
 
 type StoreOpts struct {
 	PathTransformFunc PathTransformFunc
@@ -43,18 +60,43 @@ func NewStore(opts StoreOpts) *Store {
 	}
 }
 
-func (s * Store) writeStream(key string, r io.Reader) error {
-	pathName := s.PathTransformFunc(key)
+func (s* Store) Read(key string) (io.Reader, error) {
+	f, err := s.readStream(key)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
 
-	if err := os.MkdirAll(pathName, os.ModePerm); err != nil {
+	buf := new(bytes.Buffer)
+	_ , err = io.Copy(buf, f)
+	f.Close()
+
+	return buf, nil
+}
+
+
+func (s *Store) readStream(key string) (io.ReadCloser, error) {
+	pathKey := s.PathTransformFunc(key)
+	
+	f, err := os.Open(pathKey.FullPath())
+	if err != nil {
+		return nil, err
+	}
+
+	return f, nil
+}
+
+func (s * Store) writeStream(key string, r io.Reader) error {
+	pathKey := s.PathTransformFunc(key)
+
+	if err := os.MkdirAll(pathKey.PathName, os.ModePerm); err != nil {
 		return err
 	}
 
-	filename := "somefilename"
-	
-	pathAndFilename := pathName + "/" + filename
 
-	f, err := os.Create(pathName + "/" + filename)
+	fullPath := pathKey.FullPath()
+
+	f, err := os.Create(fullPath)
 	if err != nil {
 		return err
 	}
@@ -65,7 +107,8 @@ func (s * Store) writeStream(key string, r io.Reader) error {
 		return err
 	}
 
-	log.Printf("written (%d) bytes to disk: %s", n, pathAndFilename)
+	log.Printf("written (%d) bytes to disk: %s", n, fullPath)
 
 	return nil
 }
+
