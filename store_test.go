@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"io/ioutil"
+	"fmt"
+	"io"
 	"testing"
 )
 
@@ -19,6 +20,32 @@ func TestPathTransformFunc(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteKey(t *testing.T) {
+	opts := StoreOpts {
+		PathTransformFunc: CASPathTransformFunc,
+	}
+	s := NewStore(opts)
+	key := "momsspecials"
+	data := []byte("some jpg bytes")
+	
+	if err := s.writeStream(key, bytes.NewReader(data)); err != nil {
+		t.Error(err)
+	}
+
+	if err := s.Delete(key); err != nil {
+		t.Error(err)
+	}
+
+	r, err := s.Read(key)
+	if err == nil {
+		t.Error("Expected error reading deleted key")
+	}
+
+	if r != nil {
+		t.Error("Expected nil reader for deleted key")
+	}
+}
+
 func TestStore(t *testing.T) {
 	opts := StoreOpts {
 		PathTransformFunc: CASPathTransformFunc,
@@ -31,14 +58,21 @@ func TestStore(t *testing.T) {
 		t.Error(err)
 	}
 
+	if ok := s.Has(key); !ok {
+		t.Errorf("Expected to have key %s", key)
+	}
+
 	r, err := s.Read(key)
 	if err != nil {
 		t.Error(err)
 	}
 
-	b, _ := ioutil.ReadAll(r)
+	b, _ := io.ReadAll(r)
 
 	if string(b) != string(data) {
 		t.Errorf("Expected %s, got %s", string(data), string(b))
 	}
+
+	fmt.Println(string(b))
+	s.Delete(key)
 }
