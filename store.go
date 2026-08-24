@@ -1,32 +1,35 @@
 package main
 
-import "io"
-import "os"
-import "log"
-import "crypto/sha1"
-import "encoding/hex"
-import "strings"
-import "bytes"
+import (
+	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"strings"
+)
+
 // import "crypto/md5"
-import "fmt"
 
 const defaultRootFolderName = "ggnetwork"
 
 func CASPathTransformFunc(key string) PathKey {
 	hash := sha1.Sum([]byte(key))
 	hashStr := hex.EncodeToString(hash[:])
-	
+
 	blocksize := 5
 	sliceLen := len(hashStr) / blocksize
 
 	paths := make([]string, sliceLen)
-	
+
 	for i := 0; i < sliceLen; i++ {
 		from, to := i*blocksize, (i*blocksize)+blocksize
 		paths[i] = hashStr[from:to]
 	}
 
-	return PathKey {
+	return PathKey{
 		PathName: strings.Join(paths, "/"),
 		Filename: hashStr,
 	}
@@ -38,7 +41,6 @@ type PathKey struct {
 	PathName string
 	Filename string
 }
-
 
 func (p PathKey) FirstPathName() string {
 	paths := strings.Split(p.PathName, "/")
@@ -54,7 +56,7 @@ func (p PathKey) FullPath() string {
 
 type StoreOpts struct {
 	// Root is the folder name of the root containing all the folders/files of the system
-	Root string	
+	Root              string
 	PathTransformFunc PathTransformFunc
 }
 
@@ -72,7 +74,7 @@ type Store struct {
 func NewStore(opts StoreOpts) *Store {
 	if opts.PathTransformFunc == nil {
 		opts.PathTransformFunc = DefaultPathTransformFunc
-		}
+	}
 
 	if len(opts.Root) == 0 {
 		opts.Root = defaultRootFolderName
@@ -80,6 +82,10 @@ func NewStore(opts StoreOpts) *Store {
 	return &Store{
 		StoreOpts: opts,
 	}
+}
+
+func (s *Store) Clear() error {
+	return os.RemoveAll(s.Root)
 }
 
 func (s *Store) Has(key string) bool {
@@ -92,20 +98,17 @@ func (s *Store) Has(key string) bool {
 func (s *Store) Delete(key string) error {
 	pathKey := s.PathTransformFunc(key)
 
-
 	defer func() {
 		log.Printf("deleted [%s] from disk", pathKey.Filename)
 	}()
 
-	
 	firstPathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.FirstPathName())
-
 
 	return os.RemoveAll(firstPathNameWithRoot)
 
 }
 
-func (s* Store) Read(key string) (io.Reader, error) {
+func (s *Store) Read(key string) (io.Reader, error) {
 	f, err := s.readStream(key)
 	if err != nil {
 		return nil, err
@@ -113,16 +116,15 @@ func (s* Store) Read(key string) (io.Reader, error) {
 	defer f.Close()
 
 	buf := new(bytes.Buffer)
-	_ , err = io.Copy(buf, f)
+	_, err = io.Copy(buf, f)
 	f.Close()
 
 	return buf, nil
 }
 
-
 func (s *Store) readStream(key string) (io.ReadCloser, error) {
 	pathKey := s.PathTransformFunc(key)
-	
+
 	fullPathWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.FullPath())
 
 	f, err := os.Open(fullPathWithRoot)
@@ -131,9 +133,9 @@ func (s *Store) readStream(key string) (io.ReadCloser, error) {
 	}
 
 	return f, nil
-} 
+}
 
-func (s * Store) writeStream(key string, r io.Reader) error {
+func (s *Store) writeStream(key string, r io.Reader) error {
 	pathKey := s.PathTransformFunc(key)
 	pathNameWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.PathName)
 
@@ -160,4 +162,3 @@ func (s * Store) writeStream(key string, r io.Reader) error {
 
 	return nil
 }
-
