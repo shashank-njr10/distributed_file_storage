@@ -2,6 +2,8 @@ package p2p
 
 import "net"
 import "fmt"
+import "log"
+import "errors"
 
 //TCPPeer represents the remote node over a TCP established connection
 type TCPPeer struct {
@@ -52,6 +54,21 @@ func (t* TCPTransport) Consume() <-chan RPC {
 	return t.rpcch
 }
 
+func(t *TCPTransport) Close() error {
+	return t.listener.Close()
+}
+
+
+// Dial implments the transport interface  
+func (t *TCPTransport) Dial(addr string) error {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil
+	}
+
+	go t.handleConn(conn, true)
+	return nil
+}
 
 func (t *TCPTransport) ListenAndAccept() error {
 	var err error
@@ -61,23 +78,29 @@ func (t *TCPTransport) ListenAndAccept() error {
 		return err
 	}
 	go t.startAcceptLoop()
+
+	log.Printf("TCP transport listening on %s\n", t.ListenAddr)
+
 	return nil
 }
 
 func (t *TCPTransport) startAcceptLoop() {
 	for {
 		conn, err := t.listener.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			return 
+		}
 		if err != nil {
 			fmt.Printf("TCP accept error: %s\n", err)
 			// continue;
 		}
 
 		fmt.Printf("new incoming connection %+v\n", conn)
-		go t.handleConn(conn)
+		go t.handleConn(conn, false)
 	}
 }
 
-func (t *TCPTransport) handleConn(conn net.Conn) {
+func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	var err error	
 
 	defer func() {
@@ -85,7 +108,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 		conn.Close()
 	}()
 
-	peer := NewTCPPeer(conn, true)
+	peer := NewTCPPeer(conn, outbound)
 
 	if err = t.HandshakeFunc(peer); err != nil {
 		conn.Close()
