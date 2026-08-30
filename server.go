@@ -1,8 +1,15 @@
 package main
-import "github.com/shashank-njr10/distributed_file_storage/p2p"
-import "io"
-import "fmt"
-import "log"
+
+import (
+	"encoding/gob"
+	"fmt"
+	"io"
+	"log"
+	"sync"
+	"bytes"
+
+	"github.com/shashank-njr10/distributed_file_storage/p2p"
+)
 
 
 type FileServerOpts struct {
@@ -15,6 +22,8 @@ type FileServerOpts struct {
 type FileServer struct {
 	FileServerOpts
 
+	peerLock sync.Mutex
+	peers map[string]p2p.Peer
 	store *Store
 	quitch chan struct{}
 }
@@ -28,6 +37,7 @@ func NewFileServer(opts FileServerOpts) *FileServer {
 		FileServerOpts: opts,
 		store: NewStore(storeOpts),
 		quitch: make(chan struct{}),
+		peers: make(map[string]p2p.Peer),
 	}
 }
 
@@ -35,8 +45,60 @@ func (s *FileServer) Store(key string, r io.Reader) error {
 	return s.store.Write(key,r)
 }
 
+type Payload struct {
+	Key string
+	Data []byte
+}
+
+
+func (s *FileServer) broadcast(p *Payload) error {
+	peers := []io.Writer{}
+	for _, peer := range s.peers {
+		peers = append(peers, peer)
+	}
+
+	mw := io.MultiWriter(peers...)
+	return gob.NewEncoder(mw).Encode(p)
+}
+
+
+func(s *FileServer) StoreData(key string, r io.Reader) error {
+	//1. Store this file to disk
+	// 2. Broadcast this file to all known peer in the network
+
+	if err := s.store.Write(key,r); err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+	_, err := io.Copy(buf, r)
+
+	if err != nil {
+		return err
+	}
+
+	p := &Payload{
+		Key : key,
+		Data: buf.Bytes(),
+	}
+
+	fmt.Println(buf.Bytes())
+
+	return s.broadcast(p)
+}
+
 func (s *FileServer) Stop() {
 	close(s.quitch)
+}
+
+func(s * FileServer)OnPeer(p p2p.Peer) error {
+	s.peerLock.Lock()
+	defer s.peerLock.Unlock()
+	s.peers[p.RemoteAddr().String()] = p
+	log.Printf("connected with remote %s",p.RemoteAddr())
+
+	return nil
+	
 }
 
 func (s *FileServer) loop() {
@@ -47,7 +109,11 @@ func (s *FileServer) loop() {
 	for {
 		select {
 		case msg := <- s.Transport.Consume():
-			fmt.Println(msg)
+			fmt.Println("recv msg")
+			var p Payload
+			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&p); err != nil {
+				log.Fatal(err)
+			}
 		case <- s.quitch:
 			return 
 		}

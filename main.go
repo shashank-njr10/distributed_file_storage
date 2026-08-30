@@ -1,7 +1,13 @@
 package main
 
-import "github.com/shashank-njr10/distributed_file_storage/p2p"
-import "log"
+import (
+	"bytes"
+	"log"
+	"time"
+
+	"github.com/shashank-njr10/distributed_file_storage/p2p"
+)
+
 // import "time"
 
 
@@ -23,7 +29,11 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 		BootStrapNodes:  nodes,
 	}
 
-	return NewFileServer(fileServerOpts)
+	s := NewFileServer(fileServerOpts)
+
+	tcpTransport.OnPeer = s.OnPeer
+
+	return s
 }
 
 func main() {
@@ -34,6 +44,14 @@ func main() {
 		log.Fatal(s1.Start())
 	}()
 
-	s2.Start()
+	time.Sleep(1 * time.Second)
+
+	go s2.Start()
+	time.Sleep(1 * time.Second)
+
+	data := bytes.NewReader([]byte("my big data file here!"))
+	s2.StoreData("myprivatedata",data)
+
+	select {}
 
 }
